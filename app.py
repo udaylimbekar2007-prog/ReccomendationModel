@@ -146,8 +146,8 @@ with tab_recommender:
                 </div>
                 """, unsafe_allow_html=True)
 
-                with st.expander("View full facts"):
-                    st.write(row['facts_summary'])
+                with st.expander("View full case text"):
+                    st.text_area("Full judgment text", row['full_text'], height=300, label_visibility="collapsed")
 
 with tab_about:
     st.title("About this project")
