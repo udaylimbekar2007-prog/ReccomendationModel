@@ -28,10 +28,14 @@ st.markdown("""
 <style>
 .result-card {
     background-color: #f8f9fb;
+    color: #1a1a1a;
     border-left: 4px solid #4a5b8c;
     padding: 14px 18px;
     border-radius: 6px;
     margin-bottom: 12px;
+}
+.result-card b, .result-card strong {
+    color: #1a1a1a;
 }
 .verdict-granted { color: #1a7a3c; font-weight: 600; }
 .verdict-denied { color: #b03434; font-weight: 600; }
