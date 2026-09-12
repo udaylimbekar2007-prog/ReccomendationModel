@@ -178,8 +178,3 @@ with tab_about:
     col3.metric("Verdict types", df["final_verdict"].nunique())
 
     st.dataframe(df["ground_of_divorce"].value_counts().rename("count"), use_container_width=True)
-        for idx, row in results.iterrows():
-            with st.expander(f"{row['case_title']}  —  similarity: {row['similarity']:.2f}"):
-                st.write(f"**Ground:** {row['ground_of_divorce']}")
-                st.write(f"**Verdict:** {row['final_verdict']}")
-                st.write(f"**Facts:** {row['facts_summary']}")
