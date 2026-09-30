@@ -18,7 +18,7 @@ except LookupError:
 
 # --- page config (must be the first Streamlit command) ---
 st.set_page_config(
-    page_title="Divorce Case Recommender",
+    page_title="Legal Judgement Recommendation System",
     page_icon="⚖️",
     layout="wide"
 )
@@ -96,8 +96,8 @@ def verdict_badge(verdict):
 tab_recommender, tab_about = st.tabs(["🔍 Recommender", "ℹ️ About this project"])
 
 with tab_recommender:
-    st.title("⚖️ Divorce Case Recommender")
-    st.caption("Enter case facts, or filter by ground of divorce, to find similar past cases with their outcomes.")
+    st.title("⚖️ Legal Judgement Recommendation System")
+    st.caption("Enter case facts, or filter by ground of divorce, to find similar past legal judgements with their outcomes.")
 
     st.sidebar.header("Filter (optional)")
     grounds = ["All"] + sorted(df["ground_of_divorce"].unique().tolist())
@@ -107,7 +107,7 @@ with tab_recommender:
                           placeholder="e.g. husband repeatedly abusive, wife seeks divorce on grounds of cruelty")
     top_n = st.slider("Number of recommendations", 1, 10, 5)
 
-    if st.button("Find similar cases", type="primary"):
+    if st.button("Find similar judgements", type="primary"):
         working_df = df.copy()
 
         if selected_ground != "All":
@@ -116,7 +116,7 @@ with tab_recommender:
         if len(working_df) == 0:
             st.warning("No cases match that filter.")
         elif query.strip() == "":
-            st.info("Showing filtered cases (no text query entered):")
+            st.info("Showing filtered judgements (no text query entered):")
             st.dataframe(working_df[["case_title", "ground_of_divorce", "final_verdict"]], use_container_width=True)
         else:
             cleaned_query = clean_text(query)
@@ -130,7 +130,7 @@ with tab_recommender:
             working_df["similarity"] = scores
             results = working_df.sort_values("similarity", ascending=False).head(top_n)
 
-            st.subheader(f"Top {len(results)} similar cases")
+            st.subheader(f"Top {len(results)} similar judgements")
 
             # similarity chart across the results
             chart_data = results.set_index("case_title")["similarity"]
@@ -150,18 +150,18 @@ with tab_recommender:
                 </div>
                 """, unsafe_allow_html=True)
 
-                with st.expander("View full case text"):
-                    st.text_area("Full judgment text", row['full_text'], height=300, label_visibility="collapsed")
+                with st.expander("View full judgement text"):
+                    st.text_area("Full judgement text", row['full_text'], height=300, label_visibility="collapsed")
 
 with tab_about:
     st.title("About this project")
     st.markdown("""
-    ### Project Exhibition 1 — Divorce Case Recommendation System
+    ### Project Exhibition 1 — Legal Judgement Recommendation System
 
     **Approach:** Content-based filtering using TF-IDF vectorization and cosine similarity,
     combined with a structured filter layer (ground of divorce, verdict).
 
-    **Dataset:** A curated, manually verified set of Indian divorce/matrimonial court judgments,
+    **Dataset:** A curated, manually verified set of Indian divorce/matrimonial court judgements,
     filtered from a larger open legal case dataset.
 
     **Pipeline:**
@@ -177,7 +177,7 @@ with tab_about:
 
     st.subheader("Dataset overview")
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total cases", len(df))
+    col1.metric("Total judgements", len(df))
     col2.metric("Unique grounds", df["ground_of_divorce"].nunique())
     col3.metric("Verdict types", df["final_verdict"].nunique())
 
