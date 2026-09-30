@@ -54,13 +54,23 @@ def load_data():
 df = load_data()
 
 lemmatizer = WordNetLemmatizer()
-stop_words = set(stopwords.words('english'))
+
+# domain-specific words that appear in almost every legal document and
+# carry no distinguishing meaning for OUR similarity task
+LEGAL_BOILERPLATE = {
+    "court", "petitioner", "respondent", "appellant", "case", "section",
+    "act", "high", "supreme", "judgment", "judgement", "order", "party",
+    "parties", "learned", "filed", "hon", "vs", "versus", "civil", "appeal",
+    "counsel", "matter", "present", "instant", "said"
+}
+
+stop_words = set(stopwords.words('english')) | LEGAL_BOILERPLATE
 
 def clean_text(text):
     text = str(text).lower()
     text = re.sub(r'[^a-z\s]', '', text)
     words = text.split()
-    words = [lemmatizer.lemmatize(w) for w in words if w not in stop_words]
+    words = [lemmatizer.lemmatize(w) for w in words if w not in stop_words and len(w) > 2]
     return " ".join(words)
 
 @st.cache_resource
@@ -73,10 +83,13 @@ def build_engine(facts_series):
     tfidf_matrix = vectorizer.fit_transform(facts_series)
     return vectorizer, tfidf_matrix
 
+# NOTE: cleaning changed above, so the cached "cleaned_facts" column from
+# your CSV may be stale. We re-clean from facts_summary fresh, live, to
+# make sure the new boilerplate removal actually applies.
+df["cleaned_facts"] = df["facts_summary"].apply(clean_text)
+
 vectorizer, tfidf_matrix = build_engine(df["cleaned_facts"])
 feature_names = vectorizer.get_feature_names_out()
-
-SIMILARITY_THRESHOLD = 0.12
 
 def get_matched_keywords(query_vector, case_vector, top_k=5):
     q = query_vector.toarray()[0]
@@ -102,6 +115,14 @@ with tab_recommender:
     st.sidebar.header("Filter (optional)")
     grounds = ["All"] + sorted(df["ground_of_divorce"].unique().tolist())
     selected_ground = st.sidebar.selectbox("Ground of divorce", grounds)
+
+    with st.sidebar.expander("⚙️ Advanced settings"):
+        similarity_threshold = st.slider(
+            "Minimum similarity to count as relevant", 0.0, 0.5, 0.12, 0.01
+        )
+        require_keyword_overlap = st.checkbox(
+            "Require at least one matched keyword", value=True
+        )
 
     query = st.text_area("Describe the case facts:", height=120,
                           placeholder="e.g. husband repeatedly abusive, wife seeks divorce on grounds of cruelty")
@@ -129,14 +150,27 @@ with tab_recommender:
             working_df = working_df.copy()
             working_df["similarity"] = scores
 
-            relevant = working_df[working_df["similarity"] >= SIMILARITY_THRESHOLD]
+            # first filter: similarity threshold
+            relevant = working_df[working_df["similarity"] >= similarity_threshold]
+
+            # second filter: must share at least one real matched keyword
+            if require_keyword_overlap and len(relevant) > 0:
+                keep_indices = []
+                for idx in relevant.index:
+                    case_vector = tfidf_matrix[idx]
+                    matched = get_matched_keywords(query_vector, case_vector, top_k=1)
+                    if len(matched) > 0:
+                        keep_indices.append(idx)
+                relevant = relevant.loc[keep_indices]
+
             results = relevant.sort_values("similarity", ascending=False).head(top_n)
 
             if len(results) == 0:
+                best_score = working_df['similarity'].max()
                 st.warning(
                     f"No sufficiently relevant cases found (highest match was "
-                    f"{working_df['similarity'].max():.2f}, below our relevance threshold of {SIMILARITY_THRESHOLD}). "
-                    f"Try rephrasing with more specific legal facts (e.g. grounds, circumstances)."
+                    f"{best_score:.2f}). Try rephrasing with more specific legal "
+                    f"facts (e.g. grounds, circumstances, relevant terms)."
                 )
             else:
                 st.subheader(f"Top {len(results)} similar cases")
@@ -166,18 +200,19 @@ with tab_about:
     st.markdown("""
     ### Project Exhibition 1 — Legal Judgement Recommendation System
 
-    **Approach:** Content-based filtering using TF-IDF vectorization and cosine similarity,
-    combined with a structured filter layer (ground of divorce, verdict) and a minimum
-    relevance threshold to avoid recommending unrelated cases.
+    **Approach:** Content-based filtering using TF-IDF vectorization (unigrams + bigrams)
+    and cosine similarity, combined with a structured filter layer (ground of divorce, verdict),
+    a minimum relevance threshold, and a matched-keyword safety check to avoid recommending
+    unrelated cases.
 
     **Dataset:** A curated, manually verified set of Indian divorce/matrimonial court judgements.
 
     **Pipeline:**
     1. Data collection and manual verification
     2. Ground-of-divorce tagging (keyword-based)
-    3. Text preprocessing (cleaning, stopword removal, lemmatization)
+    3. Text preprocessing (cleaning, legal-boilerplate + stopword removal, lemmatization)
     4. TF-IDF vectorization (unigrams + bigrams)
-    5. Cosine similarity search engine with relevance thresholding
+    5. Cosine similarity search engine with relevance thresholding and keyword-overlap verification
     6. Streamlit web interface
 
     **Team:** [add your 6 team members' names here]
