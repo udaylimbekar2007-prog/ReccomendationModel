@@ -55,13 +55,15 @@ df = load_data()
 
 lemmatizer = WordNetLemmatizer()
 
-# domain-specific words that appear in almost every legal document and
-# carry no distinguishing meaning for OUR similarity task
+# words that appear in almost every case in THIS dataset (all divorce cases),
+# so they carry no distinguishing power for similarity purposes
 LEGAL_BOILERPLATE = {
     "court", "petitioner", "respondent", "appellant", "case", "section",
     "act", "high", "supreme", "judgment", "judgement", "order", "party",
     "parties", "learned", "filed", "hon", "vs", "versus", "civil", "appeal",
-    "counsel", "matter", "present", "instant", "said"
+    "counsel", "matter", "present", "instant", "said",
+    "husband", "wife", "marriage", "married", "divorce", "spouse",
+    "hindu", "matrimonial", "wedlock"
 }
 
 stop_words = set(stopwords.words('english')) | LEGAL_BOILERPLATE
@@ -83,9 +85,8 @@ def build_engine(facts_series):
     tfidf_matrix = vectorizer.fit_transform(facts_series)
     return vectorizer, tfidf_matrix
 
-# NOTE: cleaning changed above, so the cached "cleaned_facts" column from
-# your CSV may be stale. We re-clean from facts_summary fresh, live, to
-# make sure the new boilerplate removal actually applies.
+# re-clean live so the updated boilerplate list above actually takes effect,
+# rather than relying on a possibly stale "cleaned_facts" column from the CSV
 df["cleaned_facts"] = df["facts_summary"].apply(clean_text)
 
 vectorizer, tfidf_matrix = build_engine(df["cleaned_facts"])
@@ -121,7 +122,7 @@ with tab_recommender:
             "Minimum similarity to count as relevant", 0.0, 0.5, 0.12, 0.01
         )
         require_keyword_overlap = st.checkbox(
-            "Require at least one matched keyword", value=True
+            "Require at least 2 matched keywords", value=True
         )
 
     query = st.text_area("Describe the case facts:", height=120,
@@ -153,13 +154,13 @@ with tab_recommender:
             # first filter: similarity threshold
             relevant = working_df[working_df["similarity"] >= similarity_threshold]
 
-            # second filter: must share at least one real matched keyword
+            # second filter: must share at least 2 real, meaningful matched keywords
             if require_keyword_overlap and len(relevant) > 0:
                 keep_indices = []
                 for idx in relevant.index:
                     case_vector = tfidf_matrix[idx]
-                    matched = get_matched_keywords(query_vector, case_vector, top_k=1)
-                    if len(matched) > 0:
+                    matched = get_matched_keywords(query_vector, case_vector, top_k=5)
+                    if len(matched) >= 2:
                         keep_indices.append(idx)
                 relevant = relevant.loc[keep_indices]
 
@@ -202,15 +203,15 @@ with tab_about:
 
     **Approach:** Content-based filtering using TF-IDF vectorization (unigrams + bigrams)
     and cosine similarity, combined with a structured filter layer (ground of divorce, verdict),
-    a minimum relevance threshold, and a matched-keyword safety check to avoid recommending
-    unrelated cases.
+    a minimum relevance threshold, and a matched-keyword safety check (requiring at least 2
+    shared meaningful terms) to avoid recommending unrelated cases.
 
     **Dataset:** A curated, manually verified set of Indian divorce/matrimonial court judgements.
 
     **Pipeline:**
     1. Data collection and manual verification
     2. Ground-of-divorce tagging (keyword-based)
-    3. Text preprocessing (cleaning, legal-boilerplate + stopword removal, lemmatization)
+    3. Text preprocessing (cleaning, legal-boilerplate + domain-word removal, lemmatization)
     4. TF-IDF vectorization (unigrams + bigrams)
     5. Cosine similarity search engine with relevance thresholding and keyword-overlap verification
     6. Streamlit web interface
