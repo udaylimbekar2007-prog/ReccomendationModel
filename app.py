@@ -16,14 +16,12 @@ try:
 except LookupError:
     nltk.download('wordnet')
 
-# --- page config (must be the first Streamlit command) ---
 st.set_page_config(
     page_title="Legal Judgement Recommendation System",
     page_icon="⚖️",
     layout="wide"
 )
 
-# --- light custom styling ---
 st.markdown("""
 <style>
 .result-card {
@@ -34,9 +32,7 @@ st.markdown("""
     border-radius: 6px;
     margin-bottom: 12px;
 }
-.result-card b, .result-card strong {
-    color: #1a1a1a;
-}
+.result-card b, .result-card strong { color: #1a1a1a; }
 .verdict-granted { color: #1a7a3c; font-weight: 600; }
 .verdict-denied { color: #b03434; font-weight: 600; }
 .keyword-chip {
@@ -69,15 +65,20 @@ def clean_text(text):
 
 @st.cache_resource
 def build_engine(facts_series):
-    vectorizer = TfidfVectorizer()
+    vectorizer = TfidfVectorizer(
+        ngram_range=(1, 2),
+        min_df=2,
+        sublinear_tf=True
+    )
     tfidf_matrix = vectorizer.fit_transform(facts_series)
     return vectorizer, tfidf_matrix
 
 vectorizer, tfidf_matrix = build_engine(df["cleaned_facts"])
 feature_names = vectorizer.get_feature_names_out()
 
+SIMILARITY_THRESHOLD = 0.12
+
 def get_matched_keywords(query_vector, case_vector, top_k=5):
-    """Return words that both the query and the case share, ranked by combined TF-IDF weight."""
     q = query_vector.toarray()[0]
     c = case_vector.toarray()[0]
     overlap_scores = q * c
@@ -92,7 +93,6 @@ def verdict_badge(verdict):
         return f'<span class="verdict-denied">❌ {verdict}</span>'
     return f"**{verdict}**"
 
-# --- navigation ---
 tab_recommender, tab_about = st.tabs(["🔍 Recommender", "ℹ️ About this project"])
 
 with tab_recommender:
@@ -116,7 +116,7 @@ with tab_recommender:
         if len(working_df) == 0:
             st.warning("No cases match that filter.")
         elif query.strip() == "":
-            st.info("Showing filtered judgements (no text query entered):")
+            st.info("Showing filtered cases (no text query entered):")
             st.dataframe(working_df[["case_title", "ground_of_divorce", "final_verdict"]], use_container_width=True)
         else:
             cleaned_query = clean_text(query)
@@ -128,30 +128,38 @@ with tab_recommender:
             scores = cosine_similarity(query_vector, subset_matrix)[0]
             working_df = working_df.copy()
             working_df["similarity"] = scores
-            results = working_df.sort_values("similarity", ascending=False).head(top_n)
 
-            st.subheader(f"Top {len(results)} similar judgements")
+            relevant = working_df[working_df["similarity"] >= SIMILARITY_THRESHOLD]
+            results = relevant.sort_values("similarity", ascending=False).head(top_n)
 
-            # similarity chart across the results
-            chart_data = results.set_index("case_title")["similarity"]
-            st.bar_chart(chart_data)
+            if len(results) == 0:
+                st.warning(
+                    f"No sufficiently relevant cases found (highest match was "
+                    f"{working_df['similarity'].max():.2f}, below our relevance threshold of {SIMILARITY_THRESHOLD}). "
+                    f"Try rephrasing with more specific legal facts (e.g. grounds, circumstances)."
+                )
+            else:
+                st.subheader(f"Top {len(results)} similar cases")
 
-            for idx, row in results.iterrows():
-                case_vector = tfidf_matrix[idx]
-                matched = get_matched_keywords(query_vector, case_vector)
-                keyword_html = "".join([f'<span class="keyword-chip">{kw}</span>' for kw in matched]) or "<i>no strong keyword overlap</i>"
+                chart_data = results.set_index("case_title")["similarity"]
+                st.bar_chart(chart_data)
 
-                st.markdown(f"""
-                <div class="result-card">
-                    <b>{row['case_title']}</b><br>
-                    Ground: {row['ground_of_divorce']} &nbsp;|&nbsp; Verdict: {verdict_badge(row['final_verdict'])} &nbsp;|&nbsp; Similarity: {row['similarity']:.2f}
-                    <br><br>
-                    <b>Matched terms:</b><br>{keyword_html}
-                </div>
-                """, unsafe_allow_html=True)
+                for idx, row in results.iterrows():
+                    case_vector = tfidf_matrix[idx]
+                    matched = get_matched_keywords(query_vector, case_vector)
+                    keyword_html = "".join([f'<span class="keyword-chip">{kw}</span>' for kw in matched]) or "<i>no strong keyword overlap</i>"
 
-                with st.expander("View full judgement text"):
-                    st.text_area("Full judgement text", row['full_text'], height=300, label_visibility="collapsed")
+                    st.markdown(f"""
+                    <div class="result-card">
+                        <b>{row['case_title']}</b><br>
+                        Ground: {row['ground_of_divorce']} &nbsp;|&nbsp; Verdict: {verdict_badge(row['final_verdict'])} &nbsp;|&nbsp; Similarity: {row['similarity']:.2f}
+                        <br><br>
+                        <b>Matched terms:</b><br>{keyword_html}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    with st.expander("View full case text"):
+                        st.text_area("Full judgement text", row['full_text'], height=300, label_visibility="collapsed")
 
 with tab_about:
     st.title("About this project")
@@ -159,17 +167,17 @@ with tab_about:
     ### Project Exhibition 1 — Legal Judgement Recommendation System
 
     **Approach:** Content-based filtering using TF-IDF vectorization and cosine similarity,
-    combined with a structured filter layer (ground of divorce, verdict).
+    combined with a structured filter layer (ground of divorce, verdict) and a minimum
+    relevance threshold to avoid recommending unrelated cases.
 
-    **Dataset:** A curated, manually verified set of Indian divorce/matrimonial court judgements,
-    filtered from a larger open legal case dataset.
+    **Dataset:** A curated, manually verified set of Indian divorce/matrimonial court judgements.
 
     **Pipeline:**
     1. Data collection and manual verification
     2. Ground-of-divorce tagging (keyword-based)
     3. Text preprocessing (cleaning, stopword removal, lemmatization)
-    4. TF-IDF vectorization
-    5. Cosine similarity search engine
+    4. TF-IDF vectorization (unigrams + bigrams)
+    5. Cosine similarity search engine with relevance thresholding
     6. Streamlit web interface
 
     **Team:** [add your 6 team members' names here]
