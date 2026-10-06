@@ -56,6 +56,8 @@ Four representative queries, each aimed at a specific ground of divorce, checked
 | Desertion | 3/5 = 0.60 | Allowed, Allowed, Disposed, Allowed, Allowed |
 | Irretrievable Breakdown | 2/5 = 0.40 | Allowed, Allowed, Allowed, Allowed, Allowed |
 
+Link for the UI : https://divorce-case-recommender.streamlit.app/
+
 **Overall precision@5 across the 4 queries: 10/20 = 0.50**
 
 Reasonable, honest framing for the report: half of the top-5 results for a themed query carry a `ground_of_divorce` tag matching that theme. Given that 64% of cases are tagged "Unspecified," this actually undercounts true relevance — several "Unspecified" hits were topically on-point (shared vocabulary like "cruelty," "husband," "wife") but just weren't ground-tagged. Worth noting this nuance rather than the bare number alone.
